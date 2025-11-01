@@ -16,40 +16,66 @@ import (
 	"time"
 )
 
+// Client represents a connected client
 type Client struct {
-	Conn     net.Conn
-	Addr     string
-	Srv      *Server
-	LastSeen time.Time
+	Connection      net.Conn
+	RemoteAddr      string
+	Server          *Server
+	LastSeenAt      time.Time
+	IsAuthenticated bool
+	SenderId        string // Format: GUID
+	Token           string
+	RoomId          string
 }
 
 func NewClient(conn net.Conn, srv *Server) *Client {
 	return &Client{
-		Conn: conn,
-		Addr: conn.RemoteAddr().String(),
-		Srv:  srv,
+		Connection: conn,
+		RemoteAddr: conn.RemoteAddr().String(),
+		Server:     srv,
 	}
 }
 
 func (c *Client) Listen() {
 	defer func() {
-		c.Conn.Close()
-		c.Srv.RemoveClient(c)
+		c.Connection.Close()
+		c.Server.RemoveClient(c)
 	}()
 
-	scanner := bufio.NewScanner(c.Conn)
-	c.Send("Welcome to Go-Chess-Server! Type message to chat.\n")
+	// Auth session
+	if ok := Authenticate(c, AuthTimeoutLimit); !ok { // If auth fail
+		return
+	}
 
+	// Send JSON welcome message using CreatePacket
+	welcomePkt := CreatePacket(PacketTypeServer, "Server", "", "Welcome to Go-Chess-Server! Type message to chat.", "")
+	c.SendPacket(welcomePkt)
+
+	scanner := bufio.NewScanner(c.Connection)
 	for scanner.Scan() {
-		msg := scanner.Text()
-        c.LastSeen = time.Now()
-		if msg == "/quit" {
+		line := scanner.Text()
+		c.LastSeenAt = time.Now()
+
+		if line == "/quit" {
 			break
 		}
-		c.Srv.Broadcast(c, msg)
+
+		// Deserialize client packet
+		pkt, err := DeserializePacket(line)
+		if err != nil {
+			errPkt := CreatePacket(PacketTypeError, "Server", "", fmt.Sprintf("Invalid JSON: %v", err), "")
+			c.SendPacket(errPkt)
+			continue
+		}
+
+		// Broadcast chat packet to other clients
+		if pkt.Type == PacketTypeChat {
+			c.Server.Broadcast(c, pkt)
+		}
 	}
 }
 
-func (c *Client) Send(msg string) {
-	fmt.Fprintln(c.Conn, msg)
+// SendPacket sends a Packet to the client as JSON
+func (c *Client) SendPacket(pkt *Packet) {
+	fmt.Fprintln(c.Connection, pkt.SerializePacket())
 }

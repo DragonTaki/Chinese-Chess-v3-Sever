@@ -10,29 +10,29 @@
 package main
 
 import (
-    "log"
-    "net"
 	"Chinese-Chess-v3-Sever/logger"
-    "Chinese-Chess-v3-Sever/server"
+	"Chinese-Chess-v3-Sever/server"
+	"net"
 )
 
 func main() {
-    listener, err := net.Listen("tcp", "127.0.0.1:8080")
-    if err != nil {
-        log.Fatalf("Failed to start server: %v", err)
-    }
-    defer listener.Close()
+	listener, err := net.Listen("tcp", "127.0.0.1:8080")
+	if err != nil {
+		logger.Errorf("Failed to start server: %v", err)
+	}
+	defer listener.Close()
 
-    logger.Infof("Chess server started at 127.0.0.1:8080")
+	logger.Infof("Chess server started at 127.0.0.1:8080")
 
-    srv := server.NewServer()
+	srv := server.NewServer()
+	srv.StartHeartbeatSystem()
 
-    for {
-        conn, err := listener.Accept()
-        if err != nil {
-            log.Println("Connection error:", err)
-            continue
-        }
-        go srv.HandleNewClient(conn)
-    }
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			logger.Errorf("Connection error:", err)
+			continue
+		}
+		go srv.HandleNewClient(conn)
+	}
 }
